@@ -1,0 +1,11 @@
+# Cloudflare Pages project config, read by `wrangler pages deploy` (publish.py --deploy).
+# With this file present it is the source of truth for the project's bindings; the LEARNAI_KEY secret stays
+# on the project (make_key.py), not here.
+name = "learn-ai"
+pages_build_output_dir = "site"
+compatibility_date = "2026-09-01"
+
+# The phone's highlights & notes, one key per book id (functions/notes/[book].js; notes.py reads them).
+[[kv_namespaces]]
+binding = "NOTES"
+id = "<your-kv-namespace-id>"

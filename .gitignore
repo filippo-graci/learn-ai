@@ -1,0 +1,18 @@
+# local environment
+.venv/
+__pycache__/
+.wrangler/
+
+# personal content: source books, converted text, generated cards, the exported site
+inbox/
+epub/
+books/
+site/
+
+# android
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/build/
+android/local.properties
+*.apk

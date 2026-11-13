@@ -1,0 +1,8 @@
+[Unit]
+Description=Stop all LLM/GPU jobs before the morning news digest
+
+[Service]
+Type=oneshot
+# docker and nvidia-smi live in /usr/bin; a user service does not inherit the shell's PATH
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 %h/Workspace/learn_ai/stop_llm.py

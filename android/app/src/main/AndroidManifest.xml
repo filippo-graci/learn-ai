@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- News tab: loads the morning-brief site -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Review tab: the daily "N cards due" notification (asked for on the first visit to the tab) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Reader "Define": see which apps handle selected text (Android 11+ package visibility) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="LearnAI"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <!-- configChanges: rotating the phone must not recreate the activity: the screens' navigation state
+             (Library, Movies) is plain remember, and recreating dropped you back to each tab's start page. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- Full-text EPUB reader (Readium's navigator is a Fragment: AppCompat host + theme).
+             adjustNothing: the note dialog's keyboard must not resize the page (it re-paginated and moved the position). -->
+        <activity
+            android:name=".ReaderActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustNothing"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+    </application>
+</manifest>

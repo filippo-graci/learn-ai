@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stable id: the FragmentManager restores the reader into it after a rotation -->
+    <item name="reader_container" type="id" />
+</resources>

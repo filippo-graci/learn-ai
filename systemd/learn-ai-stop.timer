@@ -1,0 +1,9 @@
+[Unit]
+Description=06:30 stop of LLM/GPU jobs (news_digest.timer runs at 07:15)
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+# No Persistent=: if the laptop was off at 06:30, nothing was running to stop.
+
+[Install]
+WantedBy=timers.target

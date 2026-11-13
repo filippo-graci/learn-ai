@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon: an open book with a spark (read + learn). 108dp adaptive canvas, art kept inside the 66dp safe circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- left page -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M53,47 C47,43 40,42 32,43 L32,71 C40,70 47,71 53,75 Z" />
+    <!-- right page -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M55,47 C61,43 68,42 76,43 L76,71 C68,70 61,71 55,75 Z" />
+    <!-- spark -->
+    <path android:fillColor="#FFC94D"
+        android:pathData="M54,26 L56,31 L61,33 L56,35 L54,40 L52,35 L47,33 L52,31 Z" />
+</vector>
