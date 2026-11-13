@@ -2,6 +2,8 @@
 
 A pipeline for reading books and remembering them. It turns a PDF or EPUB into chapters, and a local LLM writes a summary, key ideas, flashcards and a quiz for each chapter. A native Android app shows the results and schedules the flashcards with spaced repetition.
 
+> Built with AI coding assistants, checked by hand. The idea, the design and the architecture are mine.
+
 The same app also shows the [Morning Brief](https://github.com/filippo-graci/local_ai_news) news digest and the session stats of [focus-cam](https://github.com/filippo-graci/focus-cam). See [Part of a larger system](#part-of-a-larger-system).
 
 ## How it works
