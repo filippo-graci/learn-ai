@@ -16,3 +16,10 @@ android/app/build/
 android/build/
 android/local.properties
 *.apk
+
+# TMDB: cached answers and your title matches (recommend.py, match_tmdb.py)
+tmdb_cache/
+tmdb_links.json
+.movies_*.json
+reviews.md
+highlights/

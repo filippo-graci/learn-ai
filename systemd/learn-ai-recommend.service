@@ -1,0 +1,11 @@
+[Unit]
+Description=Movie & series suggestions for the learn_ai app (recommend.py -> KV _doc_recommend)
+After=network-online.target
+
+[Service]
+Type=oneshot
+# wrangler (npm global) and node; a user service does not inherit the shell's PATH
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h/Workspace/learn_ai
+# TMDB token: tmdb.token in android/local.properties (not in this file)
+ExecStart=%h/Workspace/learn_ai/.venv/bin/python recommend.py

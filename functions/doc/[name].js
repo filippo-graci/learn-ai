@@ -1,7 +1,8 @@
 // /doc/<name>: a JSON object the app syncs with syncDoc (Content.kt), one KV key per name ("_doc_<name>").
-// For documents added after progress / movies (which keep their own endpoints): "reviews" = flashcard states (Review.kt).
+// For documents added after progress / movies (which keep their own endpoints): "reviews" = flashcard states (Review.kt),
+// "recommend" = suggestions written by recommend.py (laptop), only read by the app.
 // GET returns it ("{}" if none), PUT replaces it. _middleware.js has already checked the app's key.
-const NAMES = new Set(["reviews"]);
+const NAMES = new Set(["reviews", "recommend"]);
 const MAX = 10_000_000;  // bytes. KV allows 25 MB.
 
 export async function onRequest({ request, env, params }) {

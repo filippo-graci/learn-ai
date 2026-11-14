@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly movie & series suggestions (Sundays 10:00)
+
+[Timer]
+OnCalendar=Sun *-*-* 10:00:00
+# Laptop off on Sunday: run at the next start
+Persistent=true
+
+[Install]
+WantedBy=timers.target

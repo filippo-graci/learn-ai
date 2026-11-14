@@ -407,7 +407,7 @@ fun BookScreen(
                     Text("Import this book's EPUB to read the full text")
                 }
             }
-            val score = Movies.data.books[book.id]?.score ?: 0
+            val score = Movies.data.books[book.id]?.score ?: 0.0
             OutlinedButton(onClick = review, modifier = Modifier.fillMaxWidth().padding(16.dp, 8.dp, 16.dp, 8.dp)) {
                 Text(if (Movies.data.books[book.id]?.reviewed() == true) "✍️  Your review" else "✍️  Write a review", Modifier.weight(1f))
                 if (score > 0) ScoreBadge(score, size = 32)
@@ -455,7 +455,7 @@ fun bookMarkdown(book: Book, review: BookReview?, highlights: List<Highlight>, c
     book.author?.let { append("*$it*\n") }
     if (review != null && review.reviewed()) {
         append("\n## My review")
-        if (review.score > 0) append(" — ${review.score}/10")
+        if (review.score > 0) append(" — ${review.score.scoreText()}/10")
         append("\n")
         BOOK_ASPECTS.forEach { (k, label) ->
             review.aspects[k]?.takeIf { it.score > 0 || it.text.isNotBlank() }?.let { a ->

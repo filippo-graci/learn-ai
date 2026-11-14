@@ -352,7 +352,7 @@ fun BooksDetails(period: Period, today: LocalDate) {
     val days = finished.mapNotNull { (_, b) -> b.started?.let { s -> ((b.finished!! - s) / 86_400_000).toInt() + 1 } }
     FactsCard("Finished", finished.map { (id, b) ->
         (titles[id] ?: id) to listOfNotNull(
-            if (b.score > 0) "${b.score}/10" else null,
+            if (b.score > 0) "${b.score.scoreText()}/10" else null,
             b.started?.let { "${((b.finished!! - it) / 86_400_000) + 1} d" },
         ).joinToString(" · ").ifEmpty { "–" }
     }, if (days.isNotEmpty()) "Average ${avg(days.sum(), days.size).one()} days from Reading to Finished." else null)
@@ -381,7 +381,7 @@ fun MoviesDetails(period: Period, today: LocalDate) {
         "Favourites (all time)" to "${titles.count { it.favorite }}",
         "Series episodes seen (all time)" to "${titles.filter { it.series }.sumOf { it.episodesSeen }}",
     ))
-    FactsCard("Top rated", seen.filter { it.score > 0 }.sortedByDescending { it.score }.take(5).map { it.name to "${it.score}/10" })
+    FactsCard("Top rated", seen.filter { it.score > 0 }.sortedByDescending { it.score }.take(5).map { it.name to "${it.score.scoreText()}/10" })
     FactsCard("Tags", seen.flatMap { it.tags }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(8)
         .map { it.key to "${it.value}" })
 }

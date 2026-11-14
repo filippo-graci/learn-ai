@@ -21,8 +21,10 @@ PDF / EPUB ─▶ convert.py ─▶ split.py ─▶ generate.py ─▶ publish.p
 | Generate | `generate.py` | One Ollama call per chapter, constrained to a JSON schema and validated with pydantic. Every card carries a quote from the chapter; cards whose quote isn't in the text are dropped and kept for review. Invalid output after 3 retries goes to `failures.jsonl`. |
 | Publish | `publish.py` | Exports the cards to `site/` and deploys it with `wrangler pages deploy`. `functions/_middleware.js` refuses every request without the app key. |
 | Notes | `notes.py` | Writes the highlights, notes and reviews made on the phone back to Markdown on the laptop. |
+| Match | `match_tmdb.py` | Optional. Links each reviewed movie or series to its TMDB id. It takes only unambiguous matches and asks about the rest (remakes, sequels, seasons). |
+| Recommend | `recommend.py` | Optional, weekly through `systemd/`. **For you** comes from TMDB recommendations of your best-rated titles. **Essentials outside your bubble** are highly rated titles in genres you rarely rate. A taste profile (genres, keywords, people, weighted by your centred scores) is used only if a leave-one-out check shows it predicts your scores better than TMDB's own rating. |
 
-The app (`android/`, Kotlin + Jetpack Compose) has a Library with an EPUB reader, a Review tab with FSRS-6 scheduling, the news digest, a Stats tab, and movie and book reviews. Highlights, progress and reviews sync between devices through Cloudflare KV.
+The app (`android/`, Kotlin + Jetpack Compose) has a Library with an EPUB reader, a Review tab with FSRS-6 scheduling, the news digest, a Stats tab, and movie and book reviews, with TMDB search, add to list, and the suggestions page. Highlights, progress and reviews sync between devices through Cloudflare KV.
 
 `PLAN.md` is the design log, with each phase's gate and the measurements behind the decisions.
 
@@ -40,13 +42,14 @@ The app (`android/`, Kotlin + Jetpack Compose) has a Library with an EPUB reader
 2. Run `python make_key.py`. It stores a random key as the project secret `LEARNAI_KEY` and in `android/local.properties`, without printing it.
 3. Drop books in `inbox/`, then run `convert.py`, `split.py`, `generate.py` and `publish.py --deploy`.
 4. Build the app with `cd android && ./gradlew assembleDebug` and install the APK.
+5. Optional, for movie search and suggestions: get your own free TMDB API read access token (themoviedb.org > Settings > API, non-commercial use). Add it as `tmdb.token=...` to `android/local.properties`, which is never committed, and rebuild. No key ships with this repository. Then run `match_tmdb.py` once and `recommend.py`, or install `systemd/learn-ai-recommend.timer` to run it weekly.
 
-The app key is built into the APK, so the APK must not be shared. Summaries quote the books, so `site/` must never be made public; it is git-ignored along with `inbox/`, `epub/` and `books/`. The pipeline is meant for owned or public-domain books only.
+The app key (and your TMDB token, if set) is built into the APK, so the APK must not be shared. Summaries quote the books, so `site/` must never be made public; it is git-ignored along with `inbox/`, `epub/` and `books/`. The pipeline is meant for owned or public-domain books only.
 
 ## Tests
 
 ```bash
-python test_convert.py && python test_split.py && python test_generate.py && python test_publish.py && python test_notes.py
+python test_convert.py && python test_split.py && python test_generate.py && python test_publish.py && python test_notes.py && python test_match_tmdb.py && python test_recommend.py
 cd android && ./gradlew testDebugUnitTest
 ```
 
@@ -61,6 +64,8 @@ learn-ai is one of three projects that run on the same laptop and show up in the
 | [focus-cam](https://github.com/filippo-graci/focus-cam) | Webcam focus guard; its sessions feed the app's Stats tab and streak |
 
 They share one 8 GB GPU. `stop_llm.py` (a systemd timer at 06:30) frees it for the news run, and `quiet.py` keeps generation from starting again before 08:30. Any project can still be used alone.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ## License
 

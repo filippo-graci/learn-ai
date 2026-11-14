@@ -142,7 +142,7 @@ class NewFeaturesTest {
     @Test fun shareAsMarkdown() {
         val book = Book("b", "Libro", "Autore", chapters = listOf(ChapterInfo(1, "Uno", 10, "a.htm", 0, 0)))
         val h = Highlight("1", "a.htm", "{}", "frase", 0.1, note = "nota", created = 0, favorite = true)
-        val md = bookMarkdown(book, BookReview(score = 8, opinion = "Bello"), listOf(h)) { "1. Uno" }
+        val md = bookMarkdown(book, BookReview(score = 8.0, opinion = "Bello"), listOf(h)) { "1. Uno" }
         assertTrue(md.startsWith("# Libro\n*Autore*\n"))
         assertTrue("## My review — 8/10" in md && "Bello" in md)
         assertTrue("## Favourite quotes\n\n> frase" in md)

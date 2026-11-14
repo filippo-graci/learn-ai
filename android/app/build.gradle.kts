@@ -22,6 +22,8 @@ android {
         val local = Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.reader()?.use { load(it) } }
         buildConfigField("String", "CONTENT_URL", "\"https://<your-project>.pages.dev\"")
         buildConfigField("String", "CONTENT_KEY", "\"${local.getProperty("learnai.key", "")}\"")
+        // Your own TMDB API read access token (themoviedb.org > Settings > API), never committed; empty = no TMDB search
+        buildConfigField("String", "TMDB_TOKEN", "\"${local.getProperty("tmdb.token", "")}\"")
     }
 
     buildFeatures { compose = true; buildConfig = true }

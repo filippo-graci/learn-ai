@@ -74,6 +74,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +87,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** One part of a review: 0 = not rated yet, else 1..5, plus what you wrote about it. */
 @Serializable
@@ -96,7 +103,7 @@ data class Title(
     val name: String,
     val series: Boolean = false,
     val watched: Long? = null,  // watched at (epoch ms)
-    val score: Int = 0,         // 0 = not rated yet, else 1..10: the title's colour (scoreColor)
+    val score: Double = 0.0,    // 0 = not rated yet, else 1..10 in half points: its whole part is the title's colour (scoreColor)
     val aspects: Map<String, Aspect> = emptyMap(),  // keys: ASPECTS
     val opinion: String = "",
     val image: String? = null,  // file in filesDir/movies/, at most IMAGE_MAX_PX
@@ -110,6 +117,7 @@ data class Title(
     val episodesSeen: Int = 0,  // series: every episode ever ticked, all seasons (time watched)
     val runtime: Int = 0,       // minutes: the movie, or one episode
     val favorite: Boolean = false,
+    val tmdb: String = "",      // TMDB link "movie/<id>" or "tv/<id>" (a series' seasons share one), "none" = not on TMDB, "" = not linked yet (match_tmdb.py)
 )
 
 /** Minutes watched: a movie's runtime per viewing, a series' episode runtime per episode seen. */
@@ -131,7 +139,7 @@ data class WatchList(
 /** A book's review: same score colours and 1-5 aspects as a movie's. Keyed by library book id. */
 @Serializable
 data class BookReview(
-    val score: Int = 0, val aspects: Map<String, Aspect> = emptyMap(), val opinion: String = "", val updated: Long = 0,
+    val score: Double = 0.0, val aspects: Map<String, Aspect> = emptyMap(), val opinion: String = "", val updated: Long = 0,
     val status: String = "",      // shelf: SHELVES key, "" = none
     val started: Long? = null,    // set when moved to "reading"
     val finished: Long? = null,   // set when moved to "finished"
@@ -159,21 +167,69 @@ data class MovieData(
     val removed: Map<String, Long> = emptyMap(),
 )
 
-val ASPECTS = listOf("characters" to "Characters", "plot" to "Plot", "setting" to "Setting", "meaning" to "Meaning")
+/** A title on TMDB: a search result, or a suggestion from recommend.py. tmdb = "movie/<id>" / "tv/<id>" ([Title.tmdb]). */
+@Serializable
+data class Suggestion(
+    val tmdb: String, val name: String, val original: String = "", val year: String = "", val series: Boolean = false,
+    val why: String = "", val overview: String = "",
+)
+
+/** recommend.py's document (KV _doc_recommend, GET /doc/recommend): its two lists and how well its taste check went. */
+@Serializable
+data class Suggestions(
+    val made: Long = 0, val check: String = "", val forYou: List<Suggestion> = emptyList(), val essentials: List<Suggestion> = emptyList(),
+)
+
+/** TMDB search/multi in Italian, movies and series. Your own token: tmdb.token in android/local.properties. Blocking. */
+fun tmdbSearch(query: String): List<Suggestion> {
+    check(BuildConfig.TMDB_TOKEN.isNotEmpty()) { "this build has no TMDB token (tmdb.token in android/local.properties, then rebuild)" }
+    val c = URL("https://api.themoviedb.org/3/search/multi?language=it-IT&query=" + URLEncoder.encode(query, "UTF-8"))
+        .openConnection() as HttpURLConnection
+    c.setRequestProperty("Authorization", "Bearer ${BuildConfig.TMDB_TOKEN}")
+    c.connectTimeout = 15_000
+    c.readTimeout = 30_000
+    try {
+        check(c.responseCode == 200) { "TMDB answered HTTP ${c.responseCode}" }
+        return tmdbResults(c.inputStream.bufferedReader().use { it.readText() })
+    } finally {
+        c.disconnect()
+    }
+}
+
+/** search/multi's answer → its movies and series (people dropped). */
+fun tmdbResults(body: String): List<Suggestion> = json.parseToJsonElement(body).jsonObject["results"]!!.jsonArray.mapNotNull { e ->
+    val o = e.jsonObject
+    fun f(k: String) = o[k]?.jsonPrimitive?.contentOrNull ?: ""
+    val kind = f("media_type").takeIf { it == "movie" || it == "tv" } ?: return@mapNotNull null
+    Suggestion("$kind/${f("id")}", f("title").ifEmpty { f("name") }, f("original_title").ifEmpty { f("original_name") },
+        f("release_date").ifEmpty { f("first_air_date") }.take(4), series = kind == "tv", overview = f("overview").take(400))
+}
+
+val ASPECTS = listOf("characters" to "Characters", "acting" to "Acting", "plot" to "Plot", "setting" to "Setting", "meaning" to "Meaning")
 val BOOK_ASPECTS = listOf("writing" to "Writing", "ideas" to "Ideas", "characters" to "Characters", "plot" to "Plot")
 
 /** Longest side of a saved picture, in pixels: plenty for a phone screen, ~50 KB as JPEG. */
 const val IMAGE_MAX_PX = 600
 
-/** 1-3 red (bad), 4 orange, 5 yellow, 6 light green, 7 green, 8 vivid dark green, 9 pink, 10 violet. */
-fun scoreColor(score: Int): Color = when (score) {
+/** 1-3 red (bad), 4 orange, 5 yellow, 6 light green, 7 green, 8 vivid dark green, 9 light pink, 10 violet. */
+fun scoreColor(score: Number): Color = when (score.toInt()) {
     1 -> Color(0xFF8E1B1B); 2 -> Color(0xFFB71C1C); 3 -> Color(0xFFE53935)
     4 -> Color(0xFFFB8C00); 5 -> Color(0xFFFDD835); 6 -> Color(0xFF9CCC65)
-    7 -> Color(0xFF43A047); 8 -> Color(0xFF00701A); 9 -> Color(0xFFEC407A); 10 -> Color(0xFF8E24AA)
+    7 -> Color(0xFF43A047); 8 -> Color(0xFF00701A); 9 -> Color(0xFFF8A5C8); 10 -> Color(0xFF8E24AA)
     else -> Color.Gray
 }
 
-private fun onScore(score: Int) = if (score in 5..6) Color.Black else Color.White
+private fun onScore(score: Number) = if (score.toInt() in setOf(5, 6, 9)) Color.Black else Color.White
+
+/** "8" or "8.5". */
+fun Double.scoreText() = if (this % 1.0 == 0.0) toInt().toString() else toString()
+
+/** Tapping box [s] of the picker: s, then s.5 (not past 10), then cleared. */
+fun nextScore(current: Double, s: Int) = when (current) {
+    s.toDouble() -> if (s < 10) s + 0.5 else 0.0
+    s + 0.5 -> 0.0
+    else -> s.toDouble()
+}
 
 /** How much of it is watched: ticked = all; a series with a known length = its episodes; else nothing. */
 fun Title.progress(): Float = when {
@@ -329,8 +385,8 @@ object Movies {
 
     fun imageFile(name: String) = File(checkNotNull(dir), name)
 
-    fun newTitle(name: String, series: Boolean, listId: String?): Title {
-        val t = Title(UUID.randomUUID().toString(), name.trim(), series, created = System.currentTimeMillis())
+    fun newTitle(name: String, series: Boolean, listId: String?, tmdb: String = ""): Title {
+        val t = Title(UUID.randomUUID().toString(), name.trim(), series, created = System.currentTimeMillis(), tmdb = tmdb)
         change { d -> d.put(t).copy(lists = d.lists.map { if (it.id == listId) it.copy(titles = it.titles + t.id) else it }) }
         return t
     }
@@ -359,6 +415,8 @@ private sealed interface MovieScreen {
     data class List(val id: String) : MovieScreen
     data class Edit(val id: String, val back: MovieScreen) : MovieScreen
     data object Diary : MovieScreen
+    data object Search : MovieScreen
+    data object ForYou : MovieScreen
 }
 
 @Composable
@@ -371,8 +429,11 @@ fun MoviesTab() {
     val data = Movies.data
     when (val s = screen) {
         MovieScreen.Home -> MoviesHome(data, openList = { screen = MovieScreen.List(it) },
-            openTitle = { screen = MovieScreen.Edit(it, MovieScreen.Home) }, openDiary = { screen = MovieScreen.Diary })
+            openTitle = { screen = MovieScreen.Edit(it, MovieScreen.Home) }, openDiary = { screen = MovieScreen.Diary },
+            openSearch = { screen = MovieScreen.Search }, openForYou = { screen = MovieScreen.ForYou })
         MovieScreen.Diary -> DiaryScreen(data) { screen = MovieScreen.Edit(it, MovieScreen.Diary) }
+        MovieScreen.Search -> SearchScreen(data) { screen = MovieScreen.Edit(it, MovieScreen.Search) }
+        MovieScreen.ForYou -> ForYouScreen(data) { screen = MovieScreen.Edit(it, MovieScreen.ForYou) }
         is MovieScreen.List -> {
             val list = data.lists.firstOrNull { it.id == s.id }
             if (list == null) { LaunchedEffect(s) { screen = MovieScreen.Home }; return }  // deleted
@@ -387,13 +448,20 @@ fun MoviesTab() {
 }
 
 @Composable
-private fun MoviesHome(data: MovieData, openList: (String) -> Unit, openTitle: (String) -> Unit, openDiary: () -> Unit) {
+private fun MoviesHome(
+    data: MovieData, openList: (String) -> Unit, openTitle: (String) -> Unit, openDiary: () -> Unit,
+    openSearch: () -> Unit, openForYou: () -> Unit,
+) {
     var newList by remember { mutableStateOf(false) }
     var newReview by remember { mutableStateOf(false) }
     var tag by remember { mutableStateOf<String?>(null) }
     val reviews = data.titles.filter { it.reviewed() && (tag == null || tag in it.tags) }.sortedWith(compareByDescending<Title> { it.score }.thenBy { it.name.lowercase() })
     val favorites = data.titles.filter { it.favorite }.sortedByDescending { it.score }.take(4)
-    Page("Movies & TV", actions = { TextButton(onClick = openDiary) { Text("Diary") } }) { pad ->
+    Page("Movies & TV", actions = {
+        TextButton(onClick = openSearch) { Text("Search") }
+        TextButton(onClick = openForYou) { Text("For you") }
+        TextButton(onClick = openDiary) { Text("Diary") }
+    }) { pad ->
         LazyColumn(contentPadding = pad) {
             if (favorites.isNotEmpty()) item {
                 Header("Favourites")
@@ -426,12 +494,12 @@ private fun MoviesHome(data: MovieData, openList: (String) -> Unit, openTitle: (
                 OutlinedButton(onClick = { newList = true }, modifier = Modifier.fillMaxWidth().padding(16.dp)) { Text("+ New list") }
             }
             item { Header("Reviews") }
+            item {
+                OutlinedButton(onClick = { newReview = true }, modifier = Modifier.fillMaxWidth().padding(16.dp, 4.dp, 16.dp, 8.dp)) { Text("+ New review") }
+            }
             item { TagFilter(data.allTags(), tag) { tag = it } }
             if (reviews.isEmpty() && tag == null) item { Hint("Rate a title you watched: its score from 1 to 10 gives it its colour.") }
             items(reviews, key = { it.id }) { t -> TitleRow(t, check = false) { openTitle(t.id) } }
-            item {
-                OutlinedButton(onClick = { newReview = true }, modifier = Modifier.fillMaxWidth().padding(16.dp)) { Text("+ New review") }
-            }
         }
     }
     if (newList) NameDialog("New list", askKind = false, dismiss = { newList = false }) { name, _ ->
@@ -479,6 +547,123 @@ private fun ListScreen(data: MovieData, list: WatchList, openTitle: (String) -> 
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
     )
 }
+
+/** Your titles whose name matches (accents ignored), then TMDB's movies and series. */
+@Composable
+private fun SearchScreen(data: MovieData, open: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<Suggestion>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val go: () -> Unit = {
+        val q = query.trim()
+        if (q.isNotEmpty()) scope.launch {
+            error = null
+            runCatching { withContext(Dispatchers.IO) { tmdbSearch(q) } }.onSuccess { results = it }.onFailure { error = it.message }
+        }
+    }
+    val yours = if (query.isBlank()) emptyList() else data.titles.filter { fold(query.trim()) in fold(it.name) }
+    Page("Search") { pad ->
+        LazyColumn(contentPadding = pad) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(16.dp, 8.dp)) {
+                    OutlinedTextField(query, { query = it }, placeholder = { Text("Movie or series") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { go() }), modifier = Modifier.weight(1f))
+                    TextButton(onClick = { go() }, enabled = query.isNotBlank()) { Text("Search") }
+                }
+            }
+            if (yours.isNotEmpty()) {
+                item { Header("Yours") }
+                items(yours, key = { it.id }) { t -> TitleRow(t, check = false) { open(t.id) } }
+            }
+            error?.let { item { Hint("Cannot search TMDB: $it") } }
+            results?.let { r ->
+                item { Header("On TMDB") }
+                if (r.isEmpty()) item { Hint("Nothing found.") }
+                items(r, key = { "tmdb:" + it.tmdb }) { SuggestionRow(it, data, open) }
+            }
+            item { TmdbCredit() }
+        }
+    }
+}
+
+/** recommend.py's suggestions (run on the laptop): "For you" and "Essentials outside your bubble". */
+@Composable
+private fun ForYouScreen(data: MovieData, open: (String) -> Unit) {
+    var doc by remember { mutableStateOf<Suggestions?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        runCatching { withContext(Dispatchers.IO) { json.decodeFromString<Suggestions>(cloud("doc/recommend")) } }
+            .onSuccess { doc = it }.onFailure { error = it.message }
+    }
+    Page("For you") { pad ->
+        LazyColumn(contentPadding = pad) {
+            val d = doc
+            when {
+                error != null -> item { Hint("Cannot load the suggestions (offline?): $error") }
+                d == null -> item { Hint("Loading…") }
+                d.made == 0L -> item { Hint("No suggestions yet: run recommend.py on the laptop.") }
+                else -> {
+                    val made = java.time.Instant.ofEpochMilli(d.made).atZone(java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))
+                    item { Hint("By recommend.py, $made. ${d.check}") }
+                    item { Header("For you") }
+                    items(d.forYou, key = { "f:" + it.tmdb }) { SuggestionRow(it, data, open) }
+                    item { Header("Essentials outside your bubble") }
+                    item { Hint("Highly rated, in genres you almost never watch: not picked by your taste.") }
+                    items(d.essentials, key = { "e:" + it.tmdb }) { SuggestionRow(it, data, open) }
+                }
+            }
+            item { TmdbCredit() }
+        }
+    }
+}
+
+/** A TMDB title: Open if it's already yours, else Add → one of your lists, or review it now. */
+@Composable
+private fun SuggestionRow(s: Suggestion, data: MovieData, open: (String) -> Unit) {
+    val context = LocalContext.current
+    var adding by remember { mutableStateOf(false) }
+    val mine = data.titles.firstOrNull { it.tmdb == s.tmdb }
+    ListItem(
+        headlineContent = { Text(if (s.year.isNotEmpty()) "${s.name} (${s.year})" else s.name) },
+        supportingContent = {
+            Column {
+                Text(listOfNotNull(if (s.series) "Series" else "Movie", s.original.takeIf { it.isNotEmpty() && it != s.name },
+                    s.why.ifEmpty { null }).joinToString(" · "))
+                if (s.overview.isNotEmpty()) Text(s.overview, maxLines = 3, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        trailingContent = {
+            if (mine != null) TextButton(onClick = { open(mine.id) }) { Text("Open") }
+            else TextButton(onClick = { adding = true }) { Text("Add") }
+        },
+    )
+    HorizontalDivider()
+    if (adding) AlertDialog(
+        onDismissRequest = { adding = false },
+        title = { Text("Add “${s.name}”") },
+        text = {
+            Column {
+                data.lists.forEach { l ->
+                    TextButton(onClick = {
+                        adding = false
+                        Movies.newTitle(s.name, s.series, l.id, s.tmdb)
+                        Toast.makeText(context, "Added to ${l.name}", Toast.LENGTH_SHORT).show()
+                    }, modifier = Modifier.fillMaxWidth()) { Text("To list: ${l.name}", Modifier.fillMaxWidth()) }
+                }
+                TextButton(onClick = { adding = false; open(Movies.newTitle(s.name, s.series, null, s.tmdb).id) },
+                    modifier = Modifier.fillMaxWidth()) { Text("Watched it: review it now", Modifier.fillMaxWidth()) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
+    )
+}
+
+/** TMDB's required attribution. */
+@Composable
+private fun TmdbCredit() = Hint("This product uses the TMDB API but is not endorsed or certified by TMDB.")
 
 /** A title in a list (with its watched checkbox) or in Reviews. Its colour is its score. */
 @Composable
@@ -555,10 +740,10 @@ private fun TagFilter(tags: List<String>, chosen: String?, choose: (String?) -> 
 }
 
 @Composable
-fun ScoreBadge(score: Int, size: Int = 40) = Box(
-    Modifier.size(size.dp).clip(RoundedCornerShape(8.dp)).background(scoreColor(score)).semantics { contentDescription = "Score $score of 10" },
+fun ScoreBadge(score: Double, size: Int = 40) = Box(
+    Modifier.size(size.dp).clip(RoundedCornerShape(8.dp)).background(scoreColor(score)).semantics { contentDescription = "Score ${score.scoreText()} of 10" },
     contentAlignment = Alignment.Center,
-) { Text("$score", color = onScore(score), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
+) { Text(score.scoreText(), color = onScore(score), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
 
 /** The title's picture, or a plain tile in its score colour. */
 @Composable
@@ -578,7 +763,7 @@ private fun Poster(t: Title, modifier: Modifier, thumbnail: Boolean = false) {
     }
 }
 
-/** The review: picture, watched, score 1-10, characters / plot / setting / meaning (1-5 + text), opinions. Saved as you type. */
+/** The review: picture, watched, score 1-10, characters / acting / plot / setting / meaning (1-5 + text), opinions. Saved as you type. */
 @Composable
 private fun ReviewScreen(t: Title) {
     val context = LocalContext.current
@@ -703,11 +888,11 @@ private fun TagEditor(tags: List<String>, known: List<String>, set: (List<String
 /** Score 1-10 (its colour), one 1-5 ★ + text per aspect, opinions. Shared by movie and book reviews. */
 @Composable
 fun ReviewFields(
-    score: Int, aspects: Map<String, Aspect>, aspectList: List<Pair<String, String>>, opinion: String,
-    setScore: (Int) -> Unit, setAspect: (String, Aspect) -> Unit, setOpinion: (String) -> Unit,
+    score: Double, aspects: Map<String, Aspect>, aspectList: List<Pair<String, String>>, opinion: String,
+    setScore: (Double) -> Unit, setAspect: (String, Aspect) -> Unit, setOpinion: (String) -> Unit,
 ) {
     Header("Score", Modifier.padding(top = 16.dp))
-    ScorePicker(score) { s -> setScore(if (score == s) 0 else s) }
+    ScorePicker(score) { s -> setScore(nextScore(score, s)) }
     aspectList.forEach { (key, label) ->
         val a = aspects[key] ?: Aspect()
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 20.dp)) {
@@ -804,20 +989,20 @@ private fun FavouriteQuotes(bookId: String) {
     if (all.size > 3) TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Show fewer" else "Show all ${all.size}") }
 }
 
-/** 1..10, each in its colour; tap the chosen one again to clear it. */
+/** 1..10, each in its colour; tap the chosen one again for a half point (8 → 8.5), once more to clear it. */
 @Composable
-private fun ScorePicker(score: Int, choose: (Int) -> Unit) =
+private fun ScorePicker(score: Double, choose: (Int) -> Unit) =
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         (1..10).forEach { s ->
-            val on = s == score
+            val on = score > 0 && s == score.toInt()
             Box(
                 Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(6.dp))  // 48 dp: comfortable to tap
-                    .background(scoreColor(s).copy(alpha = if (on || score == 0) 1f else 0.3f))
+                    .background(scoreColor(s).copy(alpha = if (on || score == 0.0) 1f else 0.3f))
                     .then(if (on) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(6.dp)) else Modifier)
                     .clickable { choose(s) }
-                    .semantics { contentDescription = "Score $s" + if (on) ", chosen" else "" },
+                    .semantics { contentDescription = "Score $s" + if (on) ", chosen: ${score.scoreText()}" else "" },
                 contentAlignment = Alignment.Center,
-            ) { Text("$s", color = onScore(s), fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
+            ) { Text(if (on) score.scoreText() else "$s", color = onScore(s), fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
         }
     }
 
